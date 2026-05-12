@@ -26,18 +26,12 @@ function selectModel(capabilities) {
   if (capabilities.isLowEnd || !capabilities.isWebGPUSupported) {
     return {
       modelId: "TinyLlama-1.1B-Chat-v0.4-q4f16_1-MLC",
-      modelUrl: "https://huggingface.co/mlc-ai/TinyLlama-1.1B-Chat-v0.4-q4f16_1-MLC/resolve/main/",
-      modelLibUrl: "https://huggingface.co/mlc-ai/TinyLlama-1.1B-Chat-v0.4-q4f16_1-MLC/resolve/main/TinyLlama-1.1B-Chat-v0.4-q4f16_1-MLC-webgpu.wasm",
-      size: "~600MB",
-      useWebGPU: capabilities.isWebGPUSupported
+      size: "~600MB"
     };
   } else {
     return {
       modelId: "Phi-3-mini-4k-instruct-q4f16_1-MLC",
-      modelUrl: "https://huggingface.co/mlc-ai/Phi-3-mini-4k-instruct-q4f16_1-MLC/resolve/main/",
-      modelLibUrl: "https://huggingface.co/mlc-ai/phi-3-mini-4k-instruct-q4f16_1-MLC/resolve/main/phi-3-mini-4k-instruct-q4f16_1-MLC-webgpu.wasm",
-      size: "~2GB",
-      useWebGPU: true
+      size: "~2GB"
     };
   }
 }
@@ -51,16 +45,6 @@ export async function initLLM(onProgress) {
   const capabilities = detectDeviceCapabilities();
   const modelConfig = selectModel(capabilities);
   selectedModel = modelConfig;
-
-  const appConfig = {
-    model_list: [
-      {
-        model_url: modelConfig.modelUrl,
-        local_id: modelConfig.modelId,
-        model_lib_url: modelConfig.modelLibUrl,
-      }
-    ],
-  };
 
   const initProgressCallback = (report) => {
     if (onProgress) {
@@ -77,7 +61,6 @@ export async function initLLM(onProgress) {
     engine = await webllm.CreateMLCEngine(
       modelConfig.modelId,
       {
-        appConfig,
         initProgressCallback: initProgressCallback,
         logLevel: "INFO",
       }
