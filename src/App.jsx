@@ -5,6 +5,7 @@ import ChatInput from './components/ChatInput';
 import Header from './components/Header';
 import { initLLM, generateResponse, isEngineReady } from './lib/llm';
 import { saveMessage, getChatHistory, clearChatHistory } from './lib/storage';
+import { Download, Loader2, Sparkles } from 'lucide-react';
 
 function App() {
   const [isLoading, setIsLoading] = useState(true);
@@ -12,6 +13,8 @@ function App() {
   const [messages, setMessages] = useState([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [engine, setEngine] = useState(null);
+  const [pendingMessage, setPendingMessage] = useState(null);
+  const [dots, setDots] = useState('');
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
@@ -20,7 +23,14 @@ function App() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, pendingMessage]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setDots(prev => prev.length >= 3 ? '' : prev + '.');
+    }, 500);
+    return () => clearInterval(interval);
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -32,28 +42,37 @@ function App() {
       const history = await getChatHistory();
       setMessages(history);
 
-      // Initialize LLM (includes explicit model reload)
-      const llmEngine = await initLLM((progress) => {
+      // Start LLM initialization in background
+      initLLM((progress) => {
         setLoadingProgress(progress);
+      }).then(llmEngine => {
+        console.log('LLM Engine initialized:', llmEngine);
+        setEngine(llmEngine);
+        setIsLoading(false);
+        
+        // Process pending message if there is one
+        if (pendingMessage) {
+          processMessage(pendingMessage);
+          setPendingMessage(null);
+        }
+      }).catch(error => {
+        console.error('Initialization error:', error);
+        setIsLoading(false);
+        // Don't use alert, just log the error
+        setMessages(prev => [...prev, {
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: "I'm having trouble initializing. Please refresh the page or check if your browser supports WebGPU.",
+          timestamp: new Date().toISOString(),
+        }]);
       });
-      
-      console.log('LLM Engine initialized:', llmEngine);
-      setEngine(llmEngine);
-      setIsLoading(false);
     } catch (error) {
       console.error('Initialization error:', error);
-      alert(`Failed to initialize AI coach: ${error.message}. Please refresh the page.`);
       setIsLoading(false);
     }
   };
 
-  const handleSendMessage = async (userMessage) => {
-    if (!engine) {
-      console.error('Engine is null:', engine);
-      alert('AI coach is not ready yet. Please wait a moment and try again.');
-      return;
-    }
-
+  const processMessage = async (userMessage) => {
     const newMessage = {
       id: Date.now().toString(),
       role: 'user',
@@ -91,11 +110,69 @@ function App() {
     }
   };
 
+  const handleSendMessage = async (userMessage) => {
+    if (!engine) {
+      // Queue the message if engine is not ready
+      setPendingMessage(userMessage);
+      
+      // Add user message immediately
+      const newMessage = {
+        id: Date.now().toString(),
+        role: 'user',
+        content: userMessage,
+        timestamp: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, newMessage]);
+      await saveMessage(newMessage);
+      return;
+    }
+
+    processMessage(userMessage);
+  };
+
   const handleClearHistory = async () => {
     if (window.confirm('Are you sure you want to clear all chat history?')) {
       await clearChatHistory();
       setMessages([]);
     }
+  };
+
+  const renderStatusCard = () => {
+    if (!pendingMessage) return null;
+    
+    const percentage = loadingProgress ? Math.round(loadingProgress.progress * 100) : 0;
+    const currentPhase = loadingProgress ? loadingProgress.text : 'Initializing...';
+    
+    return (
+      <div className="flex gap-3 mb-4">
+        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-cyan-500 flex items-center justify-center">
+          {percentage < 100 ? (
+            <Download className="w-5 h-5 text-white animate-pulse" />
+          ) : (
+            <Loader2 className="w-5 h-5 text-white animate-spin" />
+          )}
+        </div>
+        <div className="bg-slate-800/80 backdrop-blur-sm text-slate-100 rounded-2xl rounded-tl-sm px-4 py-3 border border-slate-700 max-w-sm">
+          {percentage < 100 ? (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm text-slate-300">
+                <Sparkles className="w-4 h-4 text-primary-400" />
+                <span>{currentPhase}</span>
+              </div>
+              <div className="w-full bg-slate-700 rounded-full h-1.5 overflow-hidden">
+                <div 
+                  className="bg-gradient-to-r from-primary-500 to-cyan-500 h-1.5 rounded-full transition-all duration-300"
+                  style={{ width: `${percentage}%` }}
+                ></div>
+              </div>
+              <p className="text-xs text-slate-400">{percentage}% - I'll respond as soon as I'm ready</p>
+            </div>
+          ) : (
+            <p className="text-slate-300 text-sm">Getting ready{dots}</p>
+          )}
+        </div>
+      </div>
+    );
   };
 
   if (isLoading) {
@@ -125,6 +202,21 @@ function App() {
                 I'm your personal AI coach, here to help you reflect, grow, and achieve your goals. 
                 Everything we discuss stays private on your device.
               </p>
+              {!engine && (
+                <div className="mb-8 p-4 bg-slate-800/50 rounded-xl border border-slate-700 max-w-md">
+                  <p className="text-sm text-slate-300">
+                    {loadingProgress ? 'Downloading AI model...' : 'Initializing AI model...'}
+                  </p>
+                  {loadingProgress && (
+                    <div className="mt-2 w-full bg-slate-700 rounded-full h-2 overflow-hidden">
+                      <div 
+                        className="bg-gradient-to-r from-primary-500 to-cyan-500 h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${Math.round(loadingProgress.progress * 100)}%` }}
+                      ></div>
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-w-lg">
                 {[
                   "How can I improve my productivity?",
@@ -151,6 +243,7 @@ function App() {
               />
             ))
           )}
+          {renderStatusCard()}
           {isGenerating && (
             <div className="flex gap-3 mb-4">
               <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-cyan-500 flex items-center justify-center">
