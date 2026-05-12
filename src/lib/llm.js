@@ -69,6 +69,36 @@ export async function initLLM(onProgress) {
     return engine;
   } catch (error) {
     console.error("Failed to initialize LLM:", error);
+    
+    // Handle cache-related errors on mobile
+    if (error.message && error.message.includes('cache')) {
+      console.warn('Cache error detected, this may be a mobile browser limitation');
+      // Try to clear cache and retry
+      try {
+        if ('caches' in window) {
+          const cacheNames = await caches.keys();
+          await Promise.all(cacheNames.map(name => caches.delete(name)));
+          console.log('Caches cleared, retrying initialization...');
+          
+          // Retry initialization
+          engine = await webllm.CreateMLCEngine(
+            modelConfig.modelId,
+            {
+              initProgressCallback: initProgressCallback,
+              logLevel: "INFO",
+            }
+          );
+          await engine.reload(modelConfig.modelId);
+          
+          console.log('Model loaded successfully after cache clear');
+          isInitializing = false;
+          return engine;
+        }
+      } catch (retryError) {
+        console.error('Retry after cache clear failed:', retryError);
+      }
+    }
+    
     isInitializing = false;
     throw error;
   }
