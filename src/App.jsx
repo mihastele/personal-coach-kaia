@@ -62,7 +62,7 @@ function App() {
         setMessages(prev => [...prev, {
           id: Date.now().toString(),
           role: 'assistant',
-          content: "I'm having trouble initializing. Please refresh the page or check if your browser supports WebGPU.",
+          content: "I'm having trouble initializing.",
           timestamp: new Date().toISOString(),
         }]);
       });

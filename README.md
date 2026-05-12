@@ -60,28 +60,28 @@ On first launch, the app will download the AI model (~2GB). This happens only on
 
 ## Browser Compatibility & Mobile Support
 
-**Desktop (Recommended):**
-- Chrome 113+ ✅
-- Edge 113+ ✅
-- Firefox Nightly (with WebGPU enabled) ⚠️
+**Desktop:**
+- Chrome/Edge 90+ ✅
+- Firefox 90+ ✅
+- Safari 15+ ✅
 
-**Mobile (Limited Support):**
-- Android Chrome 113+ ⚠️ (WebGPU experimental, slow performance)
-- iOS Safari ❌ (No WebGPU support)
-- Other mobile browsers ❌
+**Mobile:**
+- iOS Safari 15+ ✅
+- Android Chrome 90+ ✅
+- Other modern mobile browsers ✅
 
-**Mobile Limitations:**
-- WebGPU is not widely supported on mobile browsers
-- iOS Safari does not support WebGPU at all
-- Mobile inference is significantly slower even on supported devices
-- Model download may be slow on mobile networks
+**Performance Notes:**
+- Uses WebAssembly CPU inference (works on all devices)
+- Model is cached in IndexedDB after first download (~2.3GB)
+- Inference speed depends on device CPU performance
+- Mobile devices may have slower response times
+- Downloads only once per browser
 
-**For better mobile support, consider:**
-1. Using Transformers.js with WebAssembly CPU inference (slower but more compatible)
-2. A service-based API with privacy guarantees
-3. Building a native mobile app with on-device ML models
-
-WebGPU is required for hardware-accelerated inference.
+**Model Caching:**
+- Transformers.js automatically caches models in IndexedDB
+- First visit: Downloads model (~2.3GB on WiFi recommended)
+- Subsequent visits: Uses cached model (instant load)
+- Cache persists across browser sessions
 
 ## License
 

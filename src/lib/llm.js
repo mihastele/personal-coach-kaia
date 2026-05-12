@@ -1,36 +1,36 @@
-import * as webllm from "@mlc-ai/web-llm";
+import { pipeline, env } from '@xenova/transformers';
 
-let engine = null;
+// Configure Transformers.js to use local caching
+env.allowLocalModels = false;
+env.useBrowserCache = true;
+
+let generator = null;
 let isInitializing = false;
 let selectedModel = null;
 
-// Detect device capabilities and select appropriate model
+// Detect device capabilities
 function detectDeviceCapabilities() {
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-  const isWebGPUSupported = 'gpu' in navigator;
-  
-  // Estimate available memory (rough approximation)
-  const deviceMemory = navigator.deviceMemory || 4; // Default to 4GB if unknown
+  const deviceMemory = navigator.deviceMemory || 4;
   
   return {
     isMobile,
-    isWebGPUSupported,
     deviceMemory,
     isLowEnd: isMobile || deviceMemory < 4
   };
 }
 
 function selectModel(capabilities) {
-  // Always use TinyLlama by default to avoid GPU memory issues
-  // Phi-3-mini requires ~2GB GPU memory which many devices don't have
+  // Use TinyLlama which is supported by Transformers.js
   return {
-    modelId: "TinyLlama-1.1B-Chat-v0.4-q4f16_1-MLC",
-    size: "~600MB"
+    modelId: "Xenova/TinyLlama-1.1B-Chat-v1.0",
+    size: "~1.1GB",
+    quantized: true
   };
 }
 
 export async function initLLM(onProgress) {
-  if (engine) return engine;
+  if (generator) return generator;
   if (isInitializing) return null;
 
   isInitializing = true;
@@ -39,66 +39,29 @@ export async function initLLM(onProgress) {
   const modelConfig = selectModel(capabilities);
   selectedModel = modelConfig;
 
-  const initProgressCallback = (report) => {
-    if (onProgress) {
-      onProgress({
-        ...report,
-        modelSize: modelConfig.size,
-        isMobile: capabilities.isMobile,
-        isWebGPUSupported: capabilities.isWebGPUSupported
-      });
-    }
-  };
-
   try {
-    console.log('Creating MLCEngine with model:', modelConfig.modelId);
-    engine = await webllm.CreateMLCEngine(
-      modelConfig.modelId,
-      {
-        initProgressCallback: initProgressCallback,
-        logLevel: "INFO",
-      }
-    );
+    console.log('Loading model with Transformers.js:', modelConfig.modelId);
     
-    console.log('Engine created, reloading model...');
-    // Explicitly reload the model to ensure it's loaded
-    await engine.reload(modelConfig.modelId);
+    // Initialize the text generation pipeline
+    generator = await pipeline('text-generation', modelConfig.modelId, {
+      quantized: modelConfig.quantized,
+      progress_callback: (progress) => {
+        if (onProgress) {
+          onProgress({
+            progress: progress.progress || 0,
+            text: progress.status || 'Loading...',
+            modelSize: modelConfig.size,
+            isMobile: capabilities.isMobile
+          });
+        }
+      }
+    });
     
     console.log('Model loaded successfully');
     isInitializing = false;
-    return engine;
+    return generator;
   } catch (error) {
     console.error("Failed to initialize LLM:", error);
-    
-    // Handle cache-related errors on mobile
-    if (error.message && error.message.includes('cache')) {
-      console.warn('Cache error detected, this may be a mobile browser limitation');
-      // Try to clear cache and retry
-      try {
-        if ('caches' in window) {
-          const cacheNames = await caches.keys();
-          await Promise.all(cacheNames.map(name => caches.delete(name)));
-          console.log('Caches cleared, retrying initialization...');
-          
-          // Retry initialization
-          engine = await webllm.CreateMLCEngine(
-            modelConfig.modelId,
-            {
-              initProgressCallback: initProgressCallback,
-              logLevel: "INFO",
-            }
-          );
-          await engine.reload(modelConfig.modelId);
-          
-          console.log('Model loaded successfully after cache clear');
-          isInitializing = false;
-          return engine;
-        }
-      } catch (retryError) {
-        console.error('Retry after cache clear failed:', retryError);
-      }
-    }
-    
     isInitializing = false;
     throw error;
   }
@@ -108,9 +71,9 @@ export function getSelectedModelInfo() {
   return selectedModel;
 }
 
-export async function generateResponse(prompt, engine) {
-  if (!engine) {
-    throw new Error("LLM engine not initialized");
+export async function generateResponse(prompt, generator) {
+  if (!generator) {
+    throw new Error("LLM generator not initialized");
   }
 
   const systemPrompt = `You are kAIa, a compassionate and wise personal AI coach. Your role is to:
@@ -125,15 +88,29 @@ export async function generateResponse(prompt, engine) {
 
 Remember: You are a coach, not a therapist. For serious mental health concerns, always recommend seeking professional help.`;
 
-  const messages = [
-    { role: "system", content: systemPrompt },
-    { role: "user", content: prompt }
-  ];
+  // Format the prompt for Phi-3
+  const formattedPrompt = `<|system|>\n${systemPrompt}<|end|>\n<|user|>\n${prompt}<|end|>\n<|assistant|>`;
 
-  const reply = await engine.chat.completions.create({ messages });
-  return reply.choices[0].message.content;
+  try {
+    const output = await generator(formattedPrompt, {
+      max_new_tokens: 512,
+      temperature: 0.7,
+      do_sample: true,
+      top_p: 0.95,
+      repetition_penalty: 1.2
+    });
+
+    // Extract the assistant's response
+    const generatedText = output[0].generated_text;
+    const response = generatedText.split('<|assistant|>')[1]?.trim() || generatedText;
+    
+    return response;
+  } catch (error) {
+    console.error("Generation error:", error);
+    throw error;
+  }
 }
 
 export function isEngineReady() {
-  return engine !== null;
+  return generator !== null;
 }
