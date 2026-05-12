@@ -32,19 +32,28 @@ function App() {
       const history = await getChatHistory();
       setMessages(history);
 
-      // Initialize LLM
+      // Initialize LLM (includes explicit model reload)
       const llmEngine = await initLLM((progress) => {
         setLoadingProgress(progress);
       });
+      
+      console.log('LLM Engine initialized:', llmEngine);
       setEngine(llmEngine);
       setIsLoading(false);
     } catch (error) {
       console.error('Initialization error:', error);
+      alert(`Failed to initialize AI coach: ${error.message}. Please refresh the page.`);
       setIsLoading(false);
     }
   };
 
   const handleSendMessage = async (userMessage) => {
+    if (!engine) {
+      console.error('Engine is null:', engine);
+      alert('AI coach is not ready yet. Please wait a moment and try again.');
+      return;
+    }
+
     const newMessage = {
       id: Date.now().toString(),
       role: 'user',

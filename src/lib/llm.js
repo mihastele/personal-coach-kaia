@@ -21,19 +21,12 @@ function detectDeviceCapabilities() {
 }
 
 function selectModel(capabilities) {
-  // For mobile/low-end devices, use TinyLlama (smaller, faster)
-  // For desktop with WebGPU, use Phi-3-mini (better quality)
-  if (capabilities.isLowEnd || !capabilities.isWebGPUSupported) {
-    return {
-      modelId: "TinyLlama-1.1B-Chat-v0.4-q4f16_1-MLC",
-      size: "~600MB"
-    };
-  } else {
-    return {
-      modelId: "Phi-3-mini-4k-instruct-q4f16_1-MLC",
-      size: "~2GB"
-    };
-  }
+  // Always use TinyLlama by default to avoid GPU memory issues
+  // Phi-3-mini requires ~2GB GPU memory which many devices don't have
+  return {
+    modelId: "TinyLlama-1.1B-Chat-v0.4-q4f16_1-MLC",
+    size: "~600MB"
+  };
 }
 
 export async function initLLM(onProgress) {
@@ -58,6 +51,7 @@ export async function initLLM(onProgress) {
   };
 
   try {
+    console.log('Creating MLCEngine with model:', modelConfig.modelId);
     engine = await webllm.CreateMLCEngine(
       modelConfig.modelId,
       {
@@ -65,6 +59,12 @@ export async function initLLM(onProgress) {
         logLevel: "INFO",
       }
     );
+    
+    console.log('Engine created, reloading model...');
+    // Explicitly reload the model to ensure it's loaded
+    await engine.reload(modelConfig.modelId);
+    
+    console.log('Model loaded successfully');
     isInitializing = false;
     return engine;
   } catch (error) {
